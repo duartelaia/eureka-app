@@ -1,0 +1,46 @@
+# Node.js dependencies
+**/node_modules/
+**/.next/
+**/dist/
+
+# Logs
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/pnpm-debug.log*
+
+# dotenv environment files (ignore real, not example)
+.env
+.env.local
+.env.production
+.env.development
+.env.test
+!.env.example
+!.env.local.example
+!.env.production.example
+!.env.development.example
+
+# Runtime data
+**/pids
+**/*.pid
+**/*.seed
+**/*.log
+**/logs/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE/editor settings
+.vscode/
+.idea/
+*.swp
+
+# Docker
+docker-compose.override.yml
+pgdata/
+postgres-data/
+
+package-lock.json
+
+mynotes.*
