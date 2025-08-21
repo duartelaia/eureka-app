@@ -40,9 +40,9 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center bg-gray-100 p-4">
+    <div className="items-center bg-yellow-50 ">
+      <Navbar user={user} onLogout={handleLogout} className="w-screen"/>
       <div className="w-full max-w-2xl">
-        <Navbar user={user} onLogout={handleLogout} />
         <Body user={user} />
       </div>
     </div>
