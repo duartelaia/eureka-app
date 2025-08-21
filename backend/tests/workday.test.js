@@ -2,6 +2,7 @@ const request = require('supertest');
 const app = require('../index');
 const db = require('../db');
 const helpers = require('../helpers');
+const { exc_absence } = require('../controllers/workdayController');
 
 let adminAgent;
 
@@ -141,8 +142,8 @@ describe('Workday API - General', () => {
     const res = await request(app)
       .post('/api/workday/updateWorkday')
       .set('Cookie', cookie)
-      .send({ date: '2023-01-01', entry_time: '09:00', exit_time: '17:00', notes: 'Worked on project X' });
-
+      .send({ date: '2023-01-01', entry_time: '09:00', exit_time: '17:00', absence: false, exc_absence: false, notes: 'Worked on project X' });
+    
     expect(res.statusCode).toBe(200);
     expect(res.body.entry_time).toBe('09:00:00');
   });
@@ -151,12 +152,12 @@ describe('Workday API - General', () => {
     await request(app)
       .post('/api/workday/updateWorkday')
       .set('Cookie', cookie)
-      .send({ date: '2023-01-01', entry_time: '09:00', exit_time: '17:00', notes: 'Worked on project X' });
+      .send({ date: '2023-01-01', entry_time: '09:00', exit_time: '17:00', absence: false, exc_absence: false, notes: 'Worked on project X' });
     
     const res = await request(app)
       .post('/api/workday/updateWorkday')
       .set('Cookie', cookie)
-      .send({ date: '2023-01-01', entry_time: '10:00', exit_time: '16:00', notes: 'Worked on project X' });
+      .send({ date: '2023-01-01', entry_time: '10:00', exit_time: '16:00', absence: false, exc_absence: false, notes: 'Worked on project X' });
 
     expect(res.statusCode).toBe(200); 
     expect(res.body.entry_time).toBe('10:00:00');
@@ -167,7 +168,7 @@ describe('Workday API - General', () => {
     await request(app)
       .post('/api/workday/updateWorkday')
       .set('Cookie', cookie)
-      .send({ date: '2023-01-01', entry_time: '09:00', exit_time: '17:00', notes: 'Worked on project X' });
+      .send({ date: '2023-01-01', entry_time: '09:00', exit_time: '17:00', absence: false, exc_absence: false, notes: 'Worked on project X' });
 
     const res = await request(app)
       .post('/api/workday//deleteWorkday')
@@ -182,7 +183,7 @@ describe('Workday API - General', () => {
     await request(app)
       .post('/api/workday/updateWorkday')
       .set('Cookie', cookie)
-      .send({ date: '2023-01-01', entry_time: '09:00', exit_time: '17:00', notes: 'Worked on project X' });
+      .send({ date: '2023-01-01', entry_time: '09:00', exit_time: '17:00', absence: false, exc_absence: false,notes: 'Worked on project X' });
 
     const res = await request(app)
       .get('/api/workday/listMonth')
@@ -344,37 +345,37 @@ describe('Workday API - General', () => {
       [1, '2023-01-01', '00:00', '01:00', 'Worked on project X']
     );
 
-    // Insert 2 workdays in the first month with 1 hour worked each
+    // Insert 2 workdays in the first month
     await db.query(
       'INSERT INTO workday (user_id, date, entry_time, exit_time, notes) VALUES ($1, $2, $3, $4, $5)',
-      [1, '2023-09-01', '00:00', '01:00', 'Worked on project X']
+      [1, '2023-09-01', '00:00', '08:00', 'Worked on project X']
     );
 
     await db.query(
       'INSERT INTO workday (user_id, date, entry_time, exit_time, notes) VALUES ($1, $2, $3, $4, $5)',
-      [1, '2023-09-02', '00:00', '01:00', 'Worked on project X']
+      [1, '2023-09-02', '00:00', '06:00', 'Worked on project X']
     );
 
-    // Insert 1 workday in a random month with 1 hour worked
+    // Insert 1 workday in a random month with less than 7 hours worked
     await db.query(
       'INSERT INTO workday (user_id, date, entry_time, exit_time, notes) VALUES ($1, $2, $3, $4, $5)',
-      [1, '2024-02-01', '00:00', '01:00', 'Worked on project X']
+      [1, '2024-02-01', '00:00', '05:10', 'Worked on project X']
     );
 
     // Insert 3 workdays in the last month
     await db.query(
       'INSERT INTO workday (user_id, date, entry_time, exit_time, notes) VALUES ($1, $2, $3, $4, $5)',
-      [1, '2024-08-31', '00:00', '01:30', 'Worked on project X']
+      [1, '2024-08-31', '00:00', '07:30', 'Worked on project X']
     );
 
     await db.query(
       'INSERT INTO workday (user_id, date, entry_time, exit_time, notes) VALUES ($1, $2, $3, $4, $5)',
-      [1, '2024-08-30', '00:00', '01:15', 'Worked on project X']
+      [1, '2024-08-30', '00:00', '07:15', 'Worked on project X']
     );
 
     await db.query(
       'INSERT INTO workday (user_id, date, entry_time, exit_time, notes) VALUES ($1, $2, $3, $4, $5)',
-      [1, '2024-08-02', '00:00', '01:00', 'Worked on project X']
+      [1, '2024-08-02', '00:00', '07:00', 'Worked on project X']
     );
 
     const res = await request(app)
@@ -382,11 +383,47 @@ describe('Workday API - General', () => {
       .set('Cookie', cookie)
       .query({ userId: '1', schoolYear: '2023-2024' });
 
-    console.log(res.body);
     expect(res.statusCode).toBe(200);
     expect(res.body.length).toBe(3); // 3 months
-    expect(res.body[0].total_hours).toBe(2); // 2 hours in September
+    expect(res.body[0].total_worked_hours).toBe('14:00'); // 14 hours in September
+    expect(res.body[1].total_extra_hours).toBe('-01:50'); // 0 extra in February
+    expect(res.body[2].total_worked_hours).toBe('21:45'); // 21 hours and 45 minutes in August
+    expect(res.body[2].total_extra_hours).toBe('00:45'); // 45 mins extra in August
   });
+
+  it('should count absensed hours which are not excused', async () => {
+    
+    // Insert a workday with an unexcused absence
+    await db.query(
+      'INSERT INTO workday (user_id, date, entry_time, exit_time, absence, notes) VALUES ($1, $2, $3, $4, $5, $6)',
+      [1, '2023-09-01', null, null, true, 'Worked on project X']
+    );
+
+    const res = await request(app)
+      .get('/api/workday/listWorkedHours')
+      .set('Cookie', cookie)
+      .query({ userId: '1', schoolYear: '2023-2024' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body[0].total_extra_hours).toBe('-07:00'); // 7 hours unexcused absence
+  })
+
+  it('should not count absensed hours which are excused', async () => {
+
+    // Insert a workday with an excused absence
+    await db.query(
+      'INSERT INTO workday (user_id, date, entry_time, exit_time, exc_absence, notes) VALUES ($1, $2, $3, $4, $5, $6)',
+      [1, '2023-09-01', null, null, true, 'Worked on project X']
+    );
+
+    const res = await request(app)
+      .get('/api/workday/listWorkedHours')
+      .set('Cookie', cookie)
+      .query({ userId: '1', schoolYear: '2023-2024' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body[0].total_extra_hours).toBe('00:00'); // 0 hours excused absence
+  })
 
 });
 
@@ -427,6 +464,8 @@ describe('Workday API - Admin', () => {
         date: '2023-01-01',
         entry_time: '09:00',
         exit_time: '17:00',
+        exc_absence: false,
+        absence: false,
         notes: 'Worked on project Y'
       });
 
@@ -446,6 +485,8 @@ describe('Workday API - Admin', () => {
         date: '2023-01-01',
         entry_time: '09:00',
         exit_time: '17:00',
+        exc_absence: false,
+        absence: false,
         notes: 'Worked on project Y'
       });
 
@@ -459,6 +500,26 @@ describe('Workday API - Admin', () => {
 
     const workday = await db.query('SELECT * FROM workday;');
     expect(workday.rows.length).toBe(0);
+  });
+
+  it('should excuse an absence as admin', async () => {
+    const res = await request(app)
+      .post('/api/workday/updateWorkday')
+      .set('Cookie', cookie)
+      .send({
+        userId: '2',
+        date: '2023-01-01',
+        entry_time: '09:00',
+        exit_time: '17:00',
+        exc_absence: true,
+        absence: false,
+        notes: 'Worked on project Y'
+      });
+
+    expect(res.statusCode).toBe(200);
+
+    const workday = await db.query('SELECT * FROM workday WHERE id = $1', ['1']);
+    expect(workday.rows[0].exc_absence).toBe(true);
   });
 
 });

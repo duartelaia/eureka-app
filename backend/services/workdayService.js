@@ -1,19 +1,43 @@
 const db = require("../db");
 
-exports.updateWorkday = async ({ userId, date, entry_time, exit_time, notes }) => {
+exports.updateWorkday = async ({ userId, date, entry_time, exit_time, absence, exc_absence, notes }) => {
   try {
-    const result = await db.query(
-      `INSERT INTO workday (user_id, date, entry_time, exit_time, notes)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (user_id, date)
-       DO UPDATE SET
-         entry_time = EXCLUDED.entry_time,
-         exit_time = EXCLUDED.exit_time,
-         notes = EXCLUDED.notes,
-         updated_at = NOW()
-       RETURNING *`,
-      [userId, date, entry_time, exit_time, notes]
-    );
+    const entryTimeValue = entry_time === '' ? null : entry_time;
+    const exitTimeValue = exit_time === '' ? null : exit_time;
+
+    let query, params;
+    if (exc_absence === null || typeof exc_absence === 'undefined') {
+      // Do not update exc_absence
+      query = `
+        INSERT INTO workday (user_id, date, entry_time, exit_time, absence, notes)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (user_id, date)
+        DO UPDATE SET
+          entry_time = EXCLUDED.entry_time,
+          exit_time = EXCLUDED.exit_time,
+          absence = EXCLUDED.absence,
+          notes = EXCLUDED.notes,
+          updated_at = NOW()
+        RETURNING *`;
+      params = [userId, date, entryTimeValue, exitTimeValue, absence, notes];
+    } else {
+      // Update exc_absence
+      query = `
+        INSERT INTO workday (user_id, date, entry_time, exit_time, absence, exc_absence, notes)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (user_id, date)
+        DO UPDATE SET
+          entry_time = EXCLUDED.entry_time,
+          exit_time = EXCLUDED.exit_time,
+          absence = EXCLUDED.absence,
+          exc_absence = EXCLUDED.exc_absence,
+          notes = EXCLUDED.notes,
+          updated_at = NOW()
+        RETURNING *`;
+      params = [userId, date, entryTimeValue, exitTimeValue, absence, exc_absence, notes];
+    }
+
+    const result = await db.query(query, params);
     if (result.rows.length === 0) {
       return { status: 500, data: { error: 'Internal server error' } };
     }
@@ -88,7 +112,6 @@ exports.insertBreak = async ({ workdayId, start_time, end_time }) => {
     );
     return { status: 200, data: result.rows[0] };
   } catch (error) {
-    console.log(error);
     return { status: 500, data: { error: 'Internal server error' } };
   }
 };
@@ -141,49 +164,109 @@ exports.listBreaks = async ({ workdayId }) => {
 exports.listWorkedHours = async ({ userId, schoolYear }) => {
   try {
     const [year1, year2] = schoolYear.split('-').map(Number);
+    const startDate = `${year1}-09-01`;
+    const endDate = `${year2}-08-31`;
 
     const result = await db.query(
       `SELECT
-          TO_CHAR(w.date, 'YYYY-MM') AS month,
-          LPAD(FLOOR(
-            SUM(
-              (
-                EXTRACT(EPOCH FROM (w.exit_time - w.entry_time)) -
-                COALESCE(
-                  (
+        TO_CHAR(w.date, 'YYYY-MM') AS month,
+
+        -- Format total worked hours as HH:MM
+        LPAD(FLOOR(SUM(
+          CASE
+            WHEN w.absence AND NOT w.exc_absence THEN 0
+            ELSE COALESCE(EXTRACT(EPOCH FROM (w.exit_time - w.entry_time)), 0)
+                - COALESCE((
                     SELECT SUM(EXTRACT(EPOCH FROM (b.end_time - b.start_time)))
-                    FROM break b
-                    WHERE b.workday_id = w.id
-                  ), 0
-                )
-              ) / 3600
-            )
-          )::TEXT, 2, '0') || ':' ||
-          LPAD(FLOOR(
-            MOD(
-              SUM(
-                (
-                  EXTRACT(EPOCH FROM (w.exit_time - w.entry_time)) -
-                  COALESCE(
-                    (
-                      SELECT SUM(EXTRACT(EPOCH FROM (b.end_time - b.start_time)))
-                      FROM break b
-                      WHERE b.workday_id = w.id
-                    ), 0
+                    FROM break b WHERE b.workday_id = w.id
+                  ), 0)
+          END
+        ) / 3600)::TEXT, 2, '0') || ':' ||
+        LPAD(FLOOR(
+          MOD(
+            SUM(
+              CASE
+                WHEN w.absence AND NOT w.exc_absence THEN 0
+                ELSE COALESCE(EXTRACT(EPOCH FROM (w.exit_time - w.entry_time)), 0)
+                    - COALESCE((
+                        SELECT SUM(EXTRACT(EPOCH FROM (b.end_time - b.start_time)))
+                        FROM break b WHERE b.workday_id = w.id
+                      ), 0)
+              END
+            ) / 60, 60
+          )
+        )::TEXT, 2, '0') AS total_worked_hours,
+
+        -- Format total extra hours as HH:MM with correct sign
+        (CASE
+          WHEN SUM(
+            CASE
+              WHEN w.absence AND NOT w.exc_absence THEN -7 * 3600
+              ELSE
+                CASE
+                  WHEN w.exc_absence THEN 0
+                  ELSE (
+                    COALESCE(EXTRACT(EPOCH FROM (w.exit_time - w.entry_time)), 0)
+                    - COALESCE((
+                        SELECT SUM(EXTRACT(EPOCH FROM (b.end_time - b.start_time)))
+                        FROM break b WHERE b.workday_id = w.id
+                      ), 0)
+                    - 7 * 3600
                   )
-                ) / 60
-              ), 60
-            )
-          )::TEXT, 2, '0') AS total_hours
-        FROM workday w
-        WHERE w.user_id = $1 AND w.date >= $2 AND w.date <= $3
-        GROUP BY month
-        ORDER BY month`,
-      [userId, `${year1}-09-01`, `${year2}-08-31`]
+                END
+            END
+          ) < 0 THEN '-'
+          ELSE ''
+        END) ||
+        LPAD(FLOOR(ABS(SUM(
+          CASE
+            WHEN w.absence AND NOT w.exc_absence THEN -7 * 3600
+            ELSE
+              CASE
+                WHEN w.exc_absence THEN 0
+                ELSE (
+                  COALESCE(EXTRACT(EPOCH FROM (w.exit_time - w.entry_time)), 0)
+                  - COALESCE((
+                      SELECT SUM(EXTRACT(EPOCH FROM (b.end_time - b.start_time)))
+                      FROM break b WHERE b.workday_id = w.id
+                    ), 0)
+                  - 7 * 3600
+                )
+              END
+          END
+        ) / 3600))::TEXT, 2, '0') || ':' ||
+        LPAD(FLOOR(
+          MOD(
+            ABS(SUM(
+              CASE
+                WHEN w.absence AND NOT w.exc_absence THEN -7 * 3600
+                ELSE
+                  CASE
+                    WHEN w.exc_absence THEN 0
+                    ELSE (
+                      COALESCE(EXTRACT(EPOCH FROM (w.exit_time - w.entry_time)), 0)
+                      - COALESCE((
+                          SELECT SUM(EXTRACT(EPOCH FROM (b.end_time - b.start_time)))
+                          FROM break b WHERE b.workday_id = w.id
+                        ), 0)
+                      - 7 * 3600
+                    )
+                  END
+              END
+            ) / 60), 60
+          )
+        )::TEXT, 2, '0') AS total_extra_hours
+
+      FROM workday w
+      WHERE w.user_id = $1 AND w.date >= $2 AND w.date <= $3
+      GROUP BY month
+      ORDER BY month`,
+      [userId, startDate, endDate]
     );
+
     return { status: 200, data: result.rows };
   } catch (error) {
-    console.error('Error listing worked hours:', error);
+    console.error('Error listing worked and extra hours:', error);
     return { status: 500, data: { error: 'Internal server error' } };
   }
 };

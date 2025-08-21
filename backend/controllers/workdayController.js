@@ -2,17 +2,23 @@ const workdayService = require('../services/workdayService');
 
 exports.updateWorkday = async (req, res) => {
   try {
-    const { date, entry_time, exit_time, notes } = req.body;
-    let userId;
+    const { date, entry_time, exit_time, absence, notes } = req.body;
+    let userId, exc_absence;
 
     if (req.user.role === 'admin') {
       userId = req.body.userId; // Admin can specify target user
+      exc_absence = req.body.exc_absence;
       // Validate userId is present and valid
       if (!userId || typeof userId !== 'string' || !/^\d+$/.test(userId)) {
         return res.status(400).json({ error: 'Invalid user ID' });
       }
+      // Validate excused absence
+      if (typeof exc_absence !== 'boolean') {
+        return res.status(400).json({ error: 'Excused absence must be a boolean,' + typeof exc_absence });
+      }
     } else {
       userId = req.user.id; // Non-admin can only modify their own data
+      exc_absence = null; // Non-admin cant excuse absense
     }
 
     // Validate date (YYYY-MM-DD)
@@ -22,22 +28,26 @@ exports.updateWorkday = async (req, res) => {
 
     // Validate entry_time and exit_time (HH:MM or HH:MM:SS)
     const timeRegex = /^\d{2}:\d{2}(:\d{2})?$/;
-    if (!entry_time || typeof entry_time !== 'string' || !timeRegex.test(entry_time)) {
+    if (entry_time && entry_time !== '' && (typeof entry_time !== 'string' || !timeRegex.test(entry_time))) {
       return res.status(400).json({ error: 'Entry time must be in HH:MM or HH:MM:SS format' });
     }
-    if (!exit_time || typeof exit_time !== 'string' || !timeRegex.test(exit_time)) {
+    if (exit_time && exit_time !== '' && (typeof exit_time !== 'string' || !timeRegex.test(exit_time))) {
       return res.status(400).json({ error: 'Leave time must be in HH:MM or HH:MM:SS format' });
     }
     // Validate notes (optional, but if present must be a string)
     if (notes !== undefined && typeof notes !== 'string') {
       return res.status(400).json({ error: 'Notes must be a string' });
     }
+    // Validate absence
+    if (absence !== undefined && typeof absence !== 'boolean') {
+      return res.status(400).json({ error: 'Absence must be a boolean' });
+    }
     // Prevent exit_time before entry_time
     if (entry_time && exit_time && entry_time > exit_time) {
       return res.status(400).json({ error: 'Exit time cannot be before entry time' });
     }
 
-    const result = await workdayService.updateWorkday({ userId, date, entry_time, exit_time, notes });
+    const result = await workdayService.updateWorkday({ userId, date, entry_time, exit_time, absence, exc_absence, notes });
     res.status(result.status).json(result.data);
    
   } catch (err) {
@@ -68,6 +78,27 @@ exports.deleteWorkday = async (req, res) => {
     const result = await workdayService.deleteWorkday({ userId, date });
     res.status(result.status).json(result.data);
    
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+exports.excuseAbsence = async (req, res) => {
+  try {
+    const { workdayId, absence } = req.body;
+
+    // Validate workdayId
+    if (!workdayId || typeof workdayId !== 'string' || !/^\d+$/.test(workdayId)) {
+      return res.status(400).json({ error: 'Invalid workday ID' });
+    }
+
+    // Validate absence
+    if (typeof absence !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid absence status' });
+    }
+
+    const result = await workdayService.excuseAbsence({ workdayId, absence });
+    res.status(result.status).json(result.data);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -126,7 +157,6 @@ exports.insertBreak = async (req, res) => {
     res.status(result.status).json(result.data);
    
   } catch (err) {
-    console.log(err);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

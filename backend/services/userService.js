@@ -100,7 +100,6 @@ exports.listUsers = async () => {
     const result = await db.query('SELECT id, name, email, phonenum, statistics, role, enter_time, leave_time FROM users');
     return { status: 200, data: result.rows };
   } catch (err) {
-    console.log(err);
     return { status: 500, data: { error: 'Internal server error' } };
   }
 }

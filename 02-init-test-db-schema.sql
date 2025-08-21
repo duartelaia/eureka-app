@@ -18,9 +18,11 @@ CREATE TABLE workday(
   id SERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   date DATE NOT NULL,
-  entry_time TIME NOT NULL,
-  exit_time TIME NOT NULL,
+  entry_time TIME,
+  exit_time TIME,
   notes TEXT,
+  absence BOOLEAN DEFAULT FALSE,
+  exc_absence BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
   UNIQUE (user_id, date)
