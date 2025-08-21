@@ -27,7 +27,7 @@ export default function Body({ user }) {
             <div className="mb-2 text-lg font-semibold">
               Viewing calendar for: {selectedUser.name}
             </div>
-            <CalendarPage userId={String(selectedUser.id)} />
+            <CalendarPage userId={String(selectedUser.id)} userRole={user.role} />
           </div>
         ) : (
           <UserListPage onViewCalendar={handleViewCalendar} />

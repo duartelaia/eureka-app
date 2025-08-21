@@ -46,7 +46,7 @@ function Calendar({ year, month, monthData, onDayClick }) {
   );
 }
 
-export default function CalendarPage({userId}) {
+export default function CalendarPage({userId, userRole}) {
   const [monthData, setMonthData] = useState([]);
   const [calendarDate, setCalendarDate] = useState(() => {
     const now = new Date();
@@ -104,6 +104,8 @@ export default function CalendarPage({userId}) {
       entry_time: workday?.entry_time || '',
       exit_time: workday?.exit_time || '',
       notes: workday?.notes || '',
+      absence: !!workday?.absence, // force boolean
+      exc_absence: !!workday?.exc_absence, // force boolean
     });
     setModalOpen(true);
   };
@@ -116,7 +118,11 @@ export default function CalendarPage({userId}) {
   };
 
   const handleFormChange = (e) => {
-    setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+    const { name, type, value, checked } = e.target;
+    setForm(f => ({
+      ...f,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   };
 
   const handleFormSubmit = async (e) => {
@@ -132,6 +138,8 @@ export default function CalendarPage({userId}) {
           entry_time: form.entry_time,
           exit_time: form.exit_time,
           notes: form.notes,
+          absence: form.absence,
+          exc_absence: form.exc_absence,
         },
         { withCredentials: true }
       );
@@ -272,7 +280,6 @@ export default function CalendarPage({userId}) {
                     value={form.entry_time}
                     onChange={handleFormChange}
                     className="w-full border rounded px-2 py-1"
-                    required
                   />
                 </div>
                 <div>
@@ -283,7 +290,6 @@ export default function CalendarPage({userId}) {
                     value={form.exit_time}
                     onChange={handleFormChange}
                     className="w-full border rounded px-2 py-1"
-                    required
                   />
                 </div>
                 <div>
@@ -296,6 +302,31 @@ export default function CalendarPage({userId}) {
                     rows={2}
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      name="absence"
+                      checked={form.absence}
+                      onChange={handleFormChange}
+                      className="mr-2"
+                    />
+                    Absence
+                  </label>
+                </div>
+                  <div>
+                    <label className="block text-sm font-medium">
+                      <input
+                        type="checkbox"
+                        name="exc_absence"
+                        checked={form.exc_absence}
+                        onChange={handleFormChange}
+                        className="mr-2"
+                        disabled={userRole !== 'admin'}
+                      />
+                      Excused Absence
+                    </label>
+                  </div>
                 <div className="flex gap-2">
                   <button
                     type="submit"
